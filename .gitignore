@@ -1,0 +1,30 @@
+# Jupyter artefacts
+.ipynb_checkpoints/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Pipeline outputs — generated at runtime, not for the repo
+outputs/
+logs/
+data/
+
+# BLAST databases — large binary files, rebuilt automatically
+*.nhr
+*.nin
+*.nsq
+*.ndb
+*.njs
+*.nog
+*.nos
+*.not
+*.ntf
+*.nto
+*.fna
+*.fna.fai
+
+# Temporary files
+*.tmp
+*.fa
