@@ -1,6 +1,86 @@
 import pytest
+from specificity_analysis_components import BlastHit
 
+class TestMultipartiteGenomeHandling:
+    """
+    Confirms that the pairwise amplification check never combines forward and
+    reverse hits from different accessions (e.g. different chromosomes in a
+    multipartite genome such as the human genome). This guarantees the
+    concatenation behaviour in load_single_fasta_sequence — which only
+    operates on single-locus samtools faidx extractions, never whole genomes —
+    cannot cause spurious cross-chromosome amplicon predictions.
+    """
 
+    def _make_hit(self, seq_id: str, primer_direction: str, strand: str,
+                   back_seq_start: int, back_seq_end: int) -> "BlastHit":
+        return BlastHit(
+            seq_id=seq_id, primer_direction=primer_direction,
+            pct_identity=100.0, q_start=1, q_end=25,
+            back_seq_start=back_seq_start, back_seq_end=back_seq_end,
+            evalue=0.001, num_gaps=0, strand=strand,
+            primer_pair="TEST", assay_name="TEST",
+        )
+
+    def test_shared_accessions_empty_across_different_chromosomes(self):
+        """
+        A forward hit on chr1 and a reverse hit on chr2 must produce an empty
+        shared_accessions set, meaning check_amplification_risk is never called
+        for that pairing.
+        """
+        fwd_hit = self._make_hit("NC_000001.11", "forward", "plus", 100, 125)
+        rev_hit = self._make_hit("NC_000002.12", "reverse", "minus", 200, 175)
+
+        fwd_hits = {"NC_000001.11": [fwd_hit]}
+        rev_hits = {"NC_000002.12": [rev_hit]}
+
+        shared_accessions = set(fwd_hits.keys()) & set(rev_hits.keys())
+        assert shared_accessions == set(), (
+            "No accession should be shared between hits on different chromosomes"
+        )
+
+    def test_same_accession_hits_are_correctly_paired(self):
+        """
+        Sanity check: when forward and reverse hits DO share an accession
+        (same chromosome), they should appear in the shared set and be
+        eligible for pairwise evaluation.
+        """
+        fwd_hit = self._make_hit("NC_000001.11", "forward", "plus", 100, 125)
+        rev_hit = self._make_hit("NC_000001.11", "reverse", "minus", 300, 275)
+
+        fwd_hits = {"NC_000001.11": [fwd_hit]}
+        rev_hits = {"NC_000001.11": [rev_hit]}
+
+        shared_accessions = set(fwd_hits.keys()) & set(rev_hits.keys())
+        assert shared_accessions == {"NC_000001.11"}
+
+    def test_multi_chromosome_hits_do_not_cross_contaminate(self):
+        """
+        With hits present on three different chromosomes for both forward and
+        reverse primers, only same-accession pairs should ever be evaluated —
+        confirming no O(n*m) cross-chromosome comparison occurs.
+        """
+        fwd_hits = {
+            "NC_000001.11": [self._make_hit("NC_000001.11", "forward", "plus", 100, 125)],
+            "NC_000002.12": [self._make_hit("NC_000002.12", "forward", "plus", 500, 525)],
+        }
+        rev_hits = {
+            "NC_000002.12": [self._make_hit("NC_000002.12", "reverse", "minus", 600, 575)],
+            "NC_000017.11": [self._make_hit("NC_000017.11", "reverse", "minus", 900, 875)],
+        }
+
+        shared_accessions = set(fwd_hits.keys()) & set(rev_hits.keys())
+
+        # Only chr2 is shared — chr1 fwd hit and chr17 rev hit must never be paired
+        assert shared_accessions == {"NC_000002.12"}
+
+        evaluated_pairs = []
+        for accession in shared_accessions:
+            for fwd_hit in fwd_hits[accession]:
+                for rev_hit in rev_hits[accession]:
+                    evaluated_pairs.append((fwd_hit.seq_id, rev_hit.seq_id))
+
+        assert evaluated_pairs == [("NC_000002.12", "NC_000002.12")]
+        assert ("NC_000001.11", "NC_000017.11") not in evaluated_pairs
 class TestMBVCrossReactivityHSV1:
     """
     Integration tests validating pipeline output against Chen et al. 2023

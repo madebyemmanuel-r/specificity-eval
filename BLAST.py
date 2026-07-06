@@ -258,13 +258,14 @@ def Blastn_Background_Check(oligo: dict, args: argparse.Namespace, output_dir: s
         word_size = "3"
 
     blast_cmd = (
-        f"blastn "
+        f"{getattr(args, 'blastn_path', 'blastn')} "
         f"-word_size {word_size} "
         f"-gapopen 5 -gapextend 2 -reward 1 "
         f"-penalty {penalty} "
         f"-evalue {args.evalue} "
         f"-query {fasta_path} "
         f"-db {db_path} "  # Standardised to use the dynamic db_path
+        f"-num_threads {getattr(args, 'threads', 1)} "
         f"-out {output_filename} "
         f'-outfmt "10 sseqid pident qstart qend sstart send evalue gaps sstrand"'
     )

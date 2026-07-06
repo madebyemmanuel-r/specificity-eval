@@ -200,3 +200,18 @@ def fetch_reference_genome(
         temp_zip_path.unlink(missing_ok=True)
             
     return genome_meta
+
+def extract_accession_labels(fasta_path: str) -> dict[str, str]:
+    """
+    Parses FASTA headers to build an accession -> description lookup, for clearer reporting downstream.
+    e.g. {'NC_000001.11': 'Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly'}
+    """
+    labels = {}
+    with open(fasta_path) as f:
+        for line in f:
+            if line.startswith(">"):
+                parts = line[1:].strip().split(maxsplit=1)
+                accession = parts[0]
+                description = parts[1] if len(parts) > 1 else ""
+                labels[accession] = description
+    return labels

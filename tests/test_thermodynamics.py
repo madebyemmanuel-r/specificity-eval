@@ -1,5 +1,5 @@
 import pytest
-from specificity_check_components import (
+from specificity_analysis_components import (
     calculate_thermodynamics,
     calculate_equilibrium_constant,
     solve_fraction_bound,
