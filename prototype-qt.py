@@ -1,4 +1,5 @@
 import sys
+import multiprocessing
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl
@@ -7,7 +8,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLabel, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPushButton,
     QProgressBar, QPlainTextEdit, QFileDialog, QListWidget, QGroupBox,
-    QMessageBox, QTextBrowser, QFrame, QToolBox, QWidget as QtWidget,
+    QMessageBox, QTextBrowser, QFrame, QToolBox, QWidget,
 )
 
 from runner import PipelineRunner, RunStatus
@@ -51,11 +52,13 @@ class PipelineWindow(QWidget):
 
         title = QLabel("RPA Specificity Pipeline")
         title.setStyleSheet("font-size: 24px; font-weight: 800; color: #111827;")
+        title.setAlignment(title.alignment() | 0x0004)  # Center alignment
         subtitle = QLabel("Launch the pipeline, monitor progress, and inspect results from one place.")
         subtitle.setStyleSheet("font-size: 12px; color: #4b5563; margin-bottom: 10px;")
+        subtitle.setAlignment(subtitle.alignment() | 0x0004)  # Center alignment
         root.addWidget(title)
         root.addWidget(subtitle)
-
+        
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
@@ -66,14 +69,16 @@ class PipelineWindow(QWidget):
         config_group = QGroupBox("Run Configuration")
         config_layout = QVBoxLayout()
         toolbox = QToolBox()
+        self.config_toolbox = toolbox
 
         # Basic settings
-        basic_widget = QtWidget()
+        basic_widget = QWidget()
         basic_form = QFormLayout()
 
         upload_row = QHBoxLayout()
         self.upload_button = QPushButton("Choose Oligo CSV...")
         self.upload_button.clicked.connect(self.choose_csv)
+        self.upload_button.setShortcut("Ctrl+O")
         self.upload_status = QLabel("No file selected.")
         upload_row.addWidget(self.upload_button)
         upload_row.addWidget(self.upload_status)
@@ -96,9 +101,13 @@ class PipelineWindow(QWidget):
         self.background_list.setMaximumHeight(120)
         basic_form.addRow(self.background_list)
 
-        self.background_remove_button = QPushButton("Remove selected")
+        background_remove_row = QHBoxLayout()
+        self.background_remove_button = QPushButton("Remove selected (1 total)")
         self.background_remove_button.clicked.connect(self.remove_background)
-        basic_form.addRow(self.background_remove_button)
+        self.background_remove_button.setMaximumWidth(200)
+        background_remove_row.addWidget(self.background_remove_button)
+        background_remove_row.addStretch()
+        basic_form.addRow(background_remove_row)
 
         self.sensitivity_select = QComboBox()
         self.sensitivity_select.addItems(["Fast", "Standard", "Advanced", "Very Advanced"])
@@ -109,13 +118,14 @@ class PipelineWindow(QWidget):
         toolbox.addItem(basic_widget, "Basic")
 
         # Advanced settings
-        advanced_widget = QtWidget()
+        advanced_widget = QWidget()
         advanced_form = QFormLayout()
 
         self.evalue_input = QDoubleSpinBox()
         self.evalue_input.setRange(0, 1_000_000)
         self.evalue_input.setValue(1000.0)
         self.evalue_input.setDecimals(2)
+        self.evalue_input.setToolTip("BLAST e-value threshold. Lower = more stringent matches")
         advanced_form.addRow("E-value:", self.evalue_input)
 
         self.max_amplicon_input = QSpinBox()
@@ -124,10 +134,14 @@ class PipelineWindow(QWidget):
         advanced_form.addRow("Max amplicon size (bp):", self.max_amplicon_input)
 
         self.threads_input = QSpinBox()
-        self.threads_input.setRange(1, 128)
-        self.threads_input.setValue(4)
+        max_threads = multiprocessing.cpu_count() * 2
+        self.threads_input.setRange(1, max_threads)
+        self.threads_input.setValue(min(4, max_threads))
+        self.threads_input.setToolTip(
+            f"Number of parallel threads (max: {max_threads} on this system)"
+        )
         advanced_form.addRow("Threads:", self.threads_input)
-
+        
         self.analysis_id_input = QLineEdit()
         self.analysis_id_input.setPlaceholderText("optional")
         advanced_form.addRow("Analysis ID:", self.analysis_id_input)
@@ -149,13 +163,19 @@ class PipelineWindow(QWidget):
 
         # --- Controls ---
         controls_row = QHBoxLayout()
+        controls_row.addStretch()
         self.run_button = QPushButton("Start Pipeline")
         self.run_button.clicked.connect(self.start_pipeline)
+        self.run_button.setShortcut("Ctrl+S")
+        self.run_button.setMinimumWidth(120)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.cancel_pipeline)
+        self.cancel_button.setShortcut("Ctrl+X")
         self.cancel_button.setEnabled(False)
+        self.cancel_button.setMinimumWidth(120)
         controls_row.addWidget(self.run_button)
-        controls_row.addWidget(self.cancel_button)
+        controls_row.addWidget(self.cancel_button, 0)
+        controls_row.addSpacing(16)
         controls_row.addStretch()
         root.addLayout(controls_row)
 
@@ -171,7 +191,14 @@ class PipelineWindow(QWidget):
         root.addLayout(progress_row)
 
         # --- Console ---
-        root.addWidget(QLabel("Console Output:"))
+        console_header_row = QHBoxLayout()
+        console_header_row.addWidget(QLabel("Console Output:"))
+        console_header_row.addStretch()
+        self.clear_console_button = QPushButton("Clear")
+        self.clear_console_button.clicked.connect(self.clear_console)
+        self.clear_console_button.setMaximumWidth(80)
+        console_header_row.addWidget(self.clear_console_button)
+        root.addLayout(console_header_row)
         self.console = QPlainTextEdit()
         self.console.setReadOnly(True)
         self.console.setStyleSheet(
@@ -198,14 +225,18 @@ class PipelineWindow(QWidget):
         results_layout.addLayout(summary_row)
 
         actions_row = QHBoxLayout()
+        actions_row.addStretch()
         self.open_report_button = QPushButton("Open Report")
         self.open_report_button.setEnabled(False)
         self.open_report_button.clicked.connect(self.open_report)
+        self.open_report_button.setMinimumWidth(140)
         self.open_folder_button = QPushButton("Open Output Folder")
         self.open_folder_button.setEnabled(False)
         self.open_folder_button.clicked.connect(self.open_output_folder)
+        self.open_folder_button.setMinimumWidth(140)
         actions_row.addWidget(self.open_report_button)
         actions_row.addWidget(self.open_folder_button)
+        actions_row.addSpacing(16)
         actions_row.addStretch()
         results_layout.addLayout(actions_row)
 
@@ -216,10 +247,16 @@ class PipelineWindow(QWidget):
         self.results_group.setLayout(results_layout)
         root.addWidget(self.results_group)
 
+        self.update_background_count()
+
+        # Auto-focus first actionable control
+        self.upload_button.setFocus()
+
     # --- Handlers ---
 
     def choose_csv(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Oligo CSV", "", "CSV Files (*.csv)")
+        default_dir = str(Path.home() / "Downloads")
+        path, _ = QFileDialog.getOpenFileName(self, "Select Oligo CSV", default_dir, "CSV Files (*.csv)")
         if path:
             self.uploaded_csv_path = Path(path)
             self.upload_status.setText(f"Selected: {self.uploaded_csv_path.name}")
@@ -232,13 +269,23 @@ class PipelineWindow(QWidget):
         existing = [self.background_list.item(i).text() for i in range(self.background_list.count())]
         if value in existing:
             self.background_input.clear()
+            QMessageBox.information(self, "Duplicate", f"'{value}' is already in the list.")
             return
         self.background_list.addItem(value)
         self.background_input.clear()
+        self.update_background_count()
 
     def remove_background(self):
         for item in self.background_list.selectedItems():
             self.background_list.takeItem(self.background_list.row(item))
+        self.update_background_count()
+
+    def update_background_count(self):
+        count = self.background_list.count()
+        self.background_remove_button.setText(f"Remove selected ({count} total)")
+
+    def clear_console(self):
+        self.console.clear()
 
     def open_report(self):
         if getattr(self, 'report_path', None) and self.report_path.exists():
@@ -279,6 +326,7 @@ class PipelineWindow(QWidget):
         self.console.appendPlainText("--- Initialising pipeline execution ---")
         self.run_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
+        self.config_toolbox.setEnabled(False)
         self.progress_bar.setValue(0)
         self.stage_label.setText("Starting...")
 
@@ -298,6 +346,9 @@ class PipelineWindow(QWidget):
 
         for line in self.runner.drain_logs():
             self.console.appendPlainText(line)
+        
+        # Auto-scroll console to bottom
+        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
 
         self.progress_bar.setValue(int(self.runner.progress * 100))
         self.stage_label.setText(self.runner.current_stage_label)
@@ -308,6 +359,7 @@ class PipelineWindow(QWidget):
             self.poll_timer.stop()
             self.run_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
+            self.config_toolbox.setEnabled(True)
 
             result = self.runner.get_result()
 
