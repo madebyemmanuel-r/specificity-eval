@@ -143,7 +143,7 @@ def main():
     finally:
         # Guarantee the original value is restored even if the BLAST run crashes
         args.evalue = original_evalue
-        
+
     # 11. Run the full specificity and confirmation analysis
     logger.info("Initiating downstream specificity evaluation pipeline...")
     emit_gui_event("STAGE", "INITIATING_SPECIFICITY_PIPELINE")
@@ -154,17 +154,22 @@ def main():
         rev_target_csv=rev_target_path,
         output_dir=run_dir,
         alignment_col="Advanced Cross Reactivity Percentage String",
-        n_bases=5,
+        n_bases=args.three_prime_window,
         max_amplicon_size=args.max_amplicon_size,
-        max_3prime_mismatches=3,
-        theta_threshold=0.05,
-        operating_temp_c=37.0,
-        write_plot=True,
+        max_3prime_mismatches=args.max_3prime_mismatches,
+        theta_threshold=args.theta_threshold,
+        operating_temp_c=args.operating_temp_c,
+        write_plot=args.write_plot,
         api_key=args.api_key,
         target_organism=args.target,
         background_organisms=args.background,
         sensitivity=args.sensitivity,
         accession_labels=accession_labels,
+        monovalent_salt_mM=args.monovalent_salt_mM,
+        divalent_salt_mM=args.divalent_salt_mM,
+        dntp_mM=args.dntp_mM,
+        oligo_conc_uM=args.oligo_conc_uM,
+        template_conc_uM=args.template_conc_uM,
     )
 
     #12. Write a single consolidated analysis metadata file covering run-specific data
@@ -179,10 +184,18 @@ def main():
             "workspace_dir": str(run_dir)
         },
         "assay_parameters": {
-            "operating_temperature_c": 37.0,
+            "operating_temperature_c": args.operating_temp_c,
             "max_amplicon_size_bp": args.max_amplicon_size,
-            "max_3prime_mismatches_allowed": 3,
-            "theta_risk_threshold": 0.05,
+            "max_3prime_mismatches_allowed": args.max_3prime_mismatches,
+            "theta_risk_threshold": args.theta_threshold,
+            "three_prime_window_bp": args.three_prime_window,
+            "reaction_conditions": {
+                "monovalent_salt_mM": args.monovalent_salt_mM,
+                "divalent_salt_mM": args.divalent_salt_mM,
+                "dntp_mM": args.dntp_mM,
+                "oligo_conc_uM": args.oligo_conc_uM,
+                "template_conc_uM": args.template_conc_uM,
+            },
             "thermodynamic_units": {
                 "enthalpy": "kcal/mol",
                 "entropy": "cal/(mol·K)"

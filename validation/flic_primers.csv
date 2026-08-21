@@ -1,0 +1,3 @@
+OligoID,Sequence,PrimerPair,Orientation,AssayName
+fliC_F2,TGCAGGCAACTTGACGACTAACAACGCTGGTAG,fliC,Forward,fliC
+fliC_R2,TTAACGGAGCTACTGGAGTGGTTGTCGCAGG,fliC,Reverse,fliC

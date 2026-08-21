@@ -196,11 +196,17 @@ def lookup_intersecting_gene(
         traceback.print_exc()
         return "Lookup Error (E-utils)"
         
-def calculate_thermodynamics(plus_sense: str, minus_sense: str, conditions: AssayConditions) -> Optional[dict]:
-    """Computes nearest-neighbour thermodynamic parameters for a primer-template duplex."""
+def calculate_thermodynamics(plus_sense: str, minus_sense: str, conditions: AssayConditions, temperature_c: float = 37.0) -> Optional[dict]:
+    """Computes nearest-neighbour thermodynamic parameters for a primer-template duplex.
+    
+    Parameters
+    ----------
+    temperature_c : float
+        Operating temperature in Celsius used to compute ΔG at this temperature.
+    """
     plus_sense = plus_sense.upper()
     minus_sense = minus_sense.upper()
-    output = {"Enthalpy": 0.2, "Entropy": -5.7, "Gibbs": 1.96}
+    output = {"Enthalpy": 0.0, "Entropy": 0.0, "Gibbs": 0.0}
 
     if len(plus_sense) < 2 or len(minus_sense) < 2:
         return None
@@ -240,7 +246,8 @@ def calculate_thermodynamics(plus_sense: str, minus_sense: str, conditions: Assa
 
     phosphates_present = (len(plus_sense) * 2) - 2
     output["Adjusted Entropy"] = output["Entropy"] + (0.368 * (phosphates_present / 2.0) * math.log(salt_conc))
-    output["Adjusted Gibbs"] = output["Enthalpy"] - (310.15 * output["Adjusted Entropy"] / 1000.0)
+    T_kelvin = temperature_c + 273.15
+    output["Adjusted Gibbs"] = output["Enthalpy"] - (T_kelvin * output["Adjusted Entropy"] / 1000.0)
     return output
 
 def calculate_equilibrium_constant(dH_cal: float, dS_cal: float, temperature_c: float) -> float:
@@ -301,7 +308,7 @@ def parse_alignment_window(hit: BlastHit, n_bases: int, max_3prime_mismatches: i
     hit.three_prime_window = window
     hit.three_prime_mismatches = mismatches
     
-    # A hit is an amplification risk if its 3' end is stable (mismatches under threshold)
+    # A hit is a Tier 1 amplification risk if its 3' end is stable (mismatches under threshold)
     hit.three_prime_stable = mismatches <= max_3prime_mismatches
     
 def load_blast_csv(
@@ -357,7 +364,7 @@ def load_blast_csv(
         parse_alignment_window(hit, n_bases, max_3prime_mismatches)
 
         if hit.query_sequence and hit.subject_sequence:
-            thermo = calculate_thermodynamics(hit.query_sequence, hit.subject_sequence, conditions)
+            thermo = calculate_thermodynamics(hit.query_sequence, hit.subject_sequence, conditions, operating_temp_c)
             if thermo is not None:
                 hit.dG = thermo["Adjusted Gibbs"]
                 dH_cal = thermo['Enthalpy'] * 1000.0
@@ -457,7 +464,7 @@ def evaluate_primer_sequestration_risks(hits: dict[str, list[BlastHit]], theta_t
         for hit in hit_list:
             if hit.theta is not None and hit.theta >= theta_threshold:
                 rows.append({
-                    "primer_pair": hit.primer_pair, "accession": accession, "primer_direction": hit.primer_direction,
+                    "primer_pair": hit.primer_pair, "assay_name": hit.assay_name, "accession": accession, "primer_direction": hit.primer_direction,
                     "primer": hit.query_sequence, "template": hit.subject_sequence,
                     "back_seq_start": hit.back_seq_start, "back_seq_end": hit.back_seq_end,
                     "strand": hit.strand, "theta": hit.theta, "dG": hit.dG, "pct_identity": hit.pct_identity,
@@ -671,8 +678,9 @@ def _classification_rows(
             fwd_theta is not None and rev_theta is not None
             and fwd_theta >= theta_threshold and rev_theta >= theta_threshold
         )
-        fwd_3p = row.get("fwd_3prime")
-        rev_3p = row.get("rev_3prime")
+        # Support both old field names and new ones
+        fwd_3p = row.get("fwd_3prime_window") or row.get("fwd_3prime")
+        rev_3p = row.get("rev_3prime_window") or row.get("rev_3prime")
         fwd_ext = _window_is_stable(fwd_3p, max_3prime_mismatches)
         rev_ext = _window_is_stable(rev_3p, max_3prime_mismatches)
         extension = None if (fwd_ext is None or rev_ext is None) else (fwd_ext and rev_ext)
@@ -682,7 +690,7 @@ def _classification_rows(
  
         rows.append({
             "assay": row.get("assay_name", "?"),
-            "accession": row.get("_accession_label", "?"),
+            "accession": row.get("background_accession") or row.get("_accession_label") or row.get("accession", "?"),
             "stable": stable,
             "extension": extension,
             "convergent": convergent,
