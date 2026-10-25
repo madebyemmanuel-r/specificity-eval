@@ -69,19 +69,32 @@ Run `python main.py --help` for all options.
 | `--sensitivity` | Standard | BLAST preset: Fast, Standard, Advanced, Very Advanced |
 | `--threads` | 4 | BLAST threads |
 
-Graphical interface (prototype)
+## Graphical Interface (Prototype)
 
-A prototype GUI wraps the command-line tool. prototype-qt launches main.py as a subprocess through runner.py, so run it from the repository root. It lets you upload an oligo CSV, set the target and background organisms, adjust the BLAST sensitivity, e-value, maximum amplicon size and thread count, and optionally set an analysis ID, BLAST database folder and NCBI API key. It shows a progress bar and live console output, lets you cancel a run, and displays the report and output files when it finishes.
+A prototype GUI wraps the command-line tool. `prototype-qt` launches `main.py` as a subprocess through `runner.py`, so run it from the repository root. 
 
-Interface	Run with	Notes
-Desktop (PySide6)	python prototype-qt.py	Background organisms are added to a list; includes Open Report and Open Output Folder buttons.
+It lets you:
+* Upload an oligo CSV
+* Set the target and background organisms
+* Adjust the BLAST sensitivity, e-value, maximum amplicon size, and thread count
+* Optionally set an analysis ID, BLAST database folder, and NCBI API key
 
-Install:
+It also shows a progress bar and live console output, lets you cancel a run, and displays the report and output files when it finishes.
 
-bash
+### Interface Reference
+
+| Interface | Run with | Notes |
+| :--- | :--- | :--- |
+| **Desktop (PySide6)** | `python prototype-qt.py` | Background organisms are added to a list; includes Open Report and Open Output Folder buttons. |
+
+### Installation
+
+```bash
 pip install PySide6   
+```
 
-The GUI does not yet expose the thermodynamic and reaction-condition options (temperature, salts, concentrations, θ threshold, 3′ settings), so those run at their defaults. Use the command line to change them.
+> **Note:** The GUI does not yet expose the thermodynamic and reaction-condition options (temperature, salts, concentrations, θ threshold, 3′ settings), so those run at their defaults. Use the command line if changes are needed. 
+
 ## Output
 
 Each run writes to `outputs/<analysis_id>/`:
