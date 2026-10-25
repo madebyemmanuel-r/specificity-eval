@@ -127,7 +127,7 @@ Each assay then gets a verdict: **FAIL** if it has any Tier 1 event, **WARN** if
 - **Case studies:** an example primer sets from published RPA assays are included in `validation/`. The Monkey B virus assays are covered by automated tests using saved BLAST output in `tests/fixtures/MBV/`.
 
 | Study | Target | Primer file | Expected result |
-| --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | 
 | Chen et al. (2023), *Zoonoses* | Monkey B virus | `MBV_Primers.csv` | UL27 cross-reacts with HSV-1 (Tier 1); US6 is specific |
 
 
