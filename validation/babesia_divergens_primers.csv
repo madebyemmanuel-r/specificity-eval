@@ -1,0 +1,5 @@
+OligoID,Sequence,PrimerPair,Orientation,AssayName
+Babdiv_COX1-F1,GCTTTTGGTCTTGTGGTTGC,Babdiv_COX1,Forward,Babesia divergens
+Babdiv_COX1-R1,GACCACACTGTAGGAATCAACC,Babdiv_COX1,Reverse,Babesia divergens
+Babdiv_18SrRNA-F6,TTTGCGTGGTGTTAATATTGACT,Babdiv_18SrRNA,Forward,Babesia divergens
+Babdiv_18SrRNA-R6,CCCAACCGTTCCTATTAACCATT,Babdiv_18SrRNA,Reverse,Babesia divergens

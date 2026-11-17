@@ -28,3 +28,4 @@ data/
 # Temporary files
 *.tmp
 *.fa
+envs/

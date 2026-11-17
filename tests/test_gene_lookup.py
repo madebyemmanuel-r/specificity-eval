@@ -9,7 +9,7 @@ Design & Formatting Notes
 -------------------------
 Although rettype=gff is documented by NCBI, the API silently falls back to 
 GenBank flatfile format for coordinate-bounded nuccore requests. This module 
-directly parses GenBank flatfile syntax (/qualifier=) using optimized regexes.
+directly parses GenBank flatfile syntax (/qualifier=) using optimised regexes.
 
 Priority for name extraction: /gene= > /product= > /locus_tag=
 """

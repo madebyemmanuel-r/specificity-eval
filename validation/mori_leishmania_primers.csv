@@ -1,0 +1,3 @@
+OligoID,Sequence,PrimerPair,Orientation,AssayName
+Ld_FP3,ATGGGCCAAAAACCCAAACTTTTCTGGTCCTC,Mori_FP3_RP3,Forward,Mori_Leishmania
+Ld_RP3,CTCCACCCGACCCTATTTTACACCAACCCCCAGT,Mori_FP3_RP3,Reverse,Mori_Leishmania

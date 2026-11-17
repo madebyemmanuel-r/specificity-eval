@@ -116,7 +116,8 @@ def lookup_intersecting_gene(
     hit_end: int,
     api_key: str = None,
 ) -> str:
-    """Identify all genes or genomic features at a coordinate window via NCBI.
+    """
+    Identify all genes or genomic features at a coordinate window via NCBI.
 
     Queries the E-utilities efetch endpoint for the given accession and
     coordinate range, then parses the returned GenBank flatfile for all
@@ -195,11 +196,17 @@ def lookup_intersecting_gene(
         traceback.print_exc()
         return "Lookup Error (E-utils)"
         
-def calculate_thermodynamics(plus_sense: str, minus_sense: str, conditions: AssayConditions) -> Optional[dict]:
-    """Computes nearest-neighbour thermodynamic parameters for a primer-template duplex."""
+def calculate_thermodynamics(plus_sense: str, minus_sense: str, conditions: AssayConditions, temperature_c: float = 37.0) -> Optional[dict]:
+    """Computes nearest-neighbour thermodynamic parameters for a primer-template duplex.
+    
+    Parameters
+    ----------
+    temperature_c : float
+        Operating temperature in Celsius used to compute ΔG at this temperature.
+    """
     plus_sense = plus_sense.upper()
     minus_sense = minus_sense.upper()
-    output = {"Enthalpy": 0.2, "Entropy": -5.7, "Gibbs": 1.96}
+    output = {"Enthalpy": 0.0, "Entropy": 0.0, "Gibbs": 0.0}
 
     if len(plus_sense) < 2 or len(minus_sense) < 2:
         return None
@@ -239,7 +246,8 @@ def calculate_thermodynamics(plus_sense: str, minus_sense: str, conditions: Assa
 
     phosphates_present = (len(plus_sense) * 2) - 2
     output["Adjusted Entropy"] = output["Entropy"] + (0.368 * (phosphates_present / 2.0) * math.log(salt_conc))
-    output["Adjusted Gibbs"] = output["Enthalpy"] - (310.15 * output["Adjusted Entropy"] / 1000.0)
+    T_kelvin = temperature_c + 273.15
+    output["Adjusted Gibbs"] = output["Enthalpy"] - (T_kelvin * output["Adjusted Entropy"] / 1000.0)
     return output
 
 def calculate_equilibrium_constant(dH_cal: float, dS_cal: float, temperature_c: float) -> float:
@@ -300,7 +308,7 @@ def parse_alignment_window(hit: BlastHit, n_bases: int, max_3prime_mismatches: i
     hit.three_prime_window = window
     hit.three_prime_mismatches = mismatches
     
-    # A hit is an amplification risk if its 3' end is stable (mismatches under threshold)
+    # A hit is a Tier 1 amplification risk if its 3' end is stable (mismatches under threshold)
     hit.three_prime_stable = mismatches <= max_3prime_mismatches
     
 def load_blast_csv(
@@ -356,7 +364,7 @@ def load_blast_csv(
         parse_alignment_window(hit, n_bases, max_3prime_mismatches)
 
         if hit.query_sequence and hit.subject_sequence:
-            thermo = calculate_thermodynamics(hit.query_sequence, hit.subject_sequence, conditions)
+            thermo = calculate_thermodynamics(hit.query_sequence, hit.subject_sequence, conditions, operating_temp_c)
             if thermo is not None:
                 hit.dG = thermo["Adjusted Gibbs"]
                 dH_cal = thermo['Enthalpy'] * 1000.0
@@ -427,7 +435,7 @@ def check_amplification_risk(
 
 def evaluate_primer_sequestration_risks(hits: dict[str, list[BlastHit]], theta_threshold: float) -> pd.DataFrame:
     """
-    Identifies stable off-target monomer binding events that risk depleting free primers.
+    Identifies stable off-target binding events that risk depleting free primers.
     
     This function scans individual primer alignments to capture high-occupancy 
     (high-theta) single-hybridisation events. 
@@ -456,7 +464,7 @@ def evaluate_primer_sequestration_risks(hits: dict[str, list[BlastHit]], theta_t
         for hit in hit_list:
             if hit.theta is not None and hit.theta >= theta_threshold:
                 rows.append({
-                    "primer_pair": hit.primer_pair, "accession": accession, "primer_direction": hit.primer_direction,
+                    "primer_pair": hit.primer_pair, "assay_name": hit.assay_name, "accession": accession, "primer_direction": hit.primer_direction,
                     "primer": hit.query_sequence, "template": hit.subject_sequence,
                     "back_seq_start": hit.back_seq_start, "back_seq_end": hit.back_seq_end,
                     "strand": hit.strand, "theta": hit.theta, "dG": hit.dG, "pct_identity": hit.pct_identity,
@@ -465,11 +473,28 @@ def evaluate_primer_sequestration_risks(hits: dict[str, list[BlastHit]], theta_t
                 })
     return pd.DataFrame(rows)
 
-def plot_specificity_landscape(pairwise_df: pd.DataFrame, output_png: str | Path) -> None:
+def plot_specificity_landscape(pairwise_df: pd.DataFrame, output_png: str | Path) -> Path:
     """
-    Generates a modern, publication-quality scatter plot using Seaborn mapping 
-    Predicted Amplicon Size vs. Maximum Primer Occupancy.
-    """ 
+    Generate and save the specificity landscape scatter plot.
+
+    This plot visualises predicted amplicon size against the maximum primer
+    occupancy for all pairwise off-target amplification risks. It uses the
+    pipeline's risk classification to colour-code Tier 1 and Tier 2 hits.
+
+    Parameters
+    ----------
+    pairwise_df : pd.DataFrame
+        Pairwise amplification risk results containing columns such as
+        ``amplicon_size_bp``, ``fwd_theta``, ``rev_theta``, and
+        ``risk_classification``.
+    output_png : str | Path
+        Path to save the generated plot image.
+
+    Returns
+    -------
+    Path
+        The path to the saved plot image file.
+    """
     output_png = Path(output_png)
     output_png.parent.mkdir(parents=True, exist_ok=True)
     
@@ -485,7 +510,7 @@ def plot_specificity_landscape(pairwise_df: pd.DataFrame, output_png: str | Path
         ax.set_ylim(-0.05, 1.05)
         fig.savefig(output_png, dpi=300, bbox_inches="tight")
         plt.close(fig)
-        return
+        return output_png
 
     # 2. Dynamically calculate the true maximum occupancy risk if individual columns exist
     # Fallback to a single 'theta' column if that's what the dataclass uses
@@ -496,7 +521,7 @@ def plot_specificity_landscape(pairwise_df: pd.DataFrame, output_png: str | Path
     else:
         pairwise_df["max_theta_risk"] = 1.0  # Absolute fallback indicator
 
-    # 3. Custom color palette mapping directly to your pipeline's Tiers
+    # 3. Custom colour palette mapping directly to your pipeline's Tiers
     tier_colors = {
         "Tier 1: Severe Cross-Reactivity Risk": "#D62728",    # Crisp Crimson
         "Tier 2: Plausible Amplification Risk": "#FF7F0E"     # Modern Orange
@@ -530,9 +555,174 @@ def plot_specificity_landscape(pairwise_df: pd.DataFrame, output_png: str | Path
 
     # Clean up legend placement
     ax.legend(title="Assay Risk Tiers", title_fontsize="10", loc="upper right", frameon=True, shadow=False)
-    sns.despine(left=True, bottom=True) # Removes ugly black outer border box
+    sns.despine(left=True, bottom=True) # Removes black outer border box
 
     # 6. Save high-resolution file
     fig.tight_layout()
     fig.savefig(output_png, dpi=300, bbox_inches="tight")
     plt.close(fig)
+    return output_png
+
+def build_assay_performance_landscape(
+    per_assay_verdicts: dict,
+    on_target_verdicts: dict,
+    tier_1_details: list,
+    tier_2_details: list,
+    theta_threshold: float,
+    output_dir: Path,
+) -> Path:
+    """
+    Build and save the Assay Performance Landscape plot.
+
+    Each assay is plotted with its worst detected off-target theta on the x-axis
+    and its confirmed on-target occupancy on the y-axis. The chart highlights
+    assays that have strong target binding but elevated off-target risk.
+
+    Parameters
+    ----------
+    per_assay_verdicts : dict
+        Summary verdicts for each assay, including pass/fail status and counts
+        of Tier 1/Tier 2 hits.
+    on_target_verdicts : dict
+        Validation details for each assay's on-target amplification, including
+        forward/reverse theta values.
+    tier_1_details : list
+        Details of Tier 1 cross-reactivity events used to compute the worst
+        off-target occupancy per assay.
+    tier_2_details : list
+        Details of Tier 2 plausible amplification events used to compute the
+        worst off-target occupancy per assay.
+    theta_threshold : float
+        The theta cutoff used to mark elevated off-target risk.
+    output_dir : Path
+        Directory where the output PNG file will be written.
+
+    Returns
+    -------
+    Path
+        The path to the saved ``assay_performance_landscape.png`` file.
+    """
+    rows = []
+    for assay, v in per_assay_verdicts.items():
+        on_target = on_target_verdicts.get(assay)
+        y = min(on_target["fwd_theta"], on_target["rev_theta"]) if on_target else 0.0
+ 
+        hit_thetas = [
+            t for details in (tier_1_details, tier_2_details)
+            for row in details
+            if row.get("assay_name") == assay
+            for t in (row.get("fwd_theta"), row.get("rev_theta"))
+            if t is not None
+        ]
+        x = max(hit_thetas) if hit_thetas else 0.0
+        rows.append((assay, x, y, v["verdict"]))
+ 
+    fig, ax = plt.subplots(figsize=(6, 5))
+ 
+    # quadrant shading: safe = low x, high y; risky = high x
+    ax.axvspan(0, theta_threshold, color="#1D9E75", alpha=0.06)
+    ax.axvspan(theta_threshold, 1.0, color="#E24B4A", alpha=0.06)
+ 
+    for assay, x, y, verdict in rows:
+        is_fail = "FAIL" in verdict.upper() or "❌" in verdict
+        color = "#E24B4A" if is_fail else "#1D9E75"
+        ax.scatter(x, y, s=110, color=color, edgecolor="white", linewidth=1, zorder=3)
+        ax.annotate(
+            assay, (x, y),
+            textcoords="offset points", xytext=(8, 6),
+            fontsize=10, color="#2C2C2A",
+        )
+ 
+    ax.axvline(theta_threshold, color="#898781", linestyle="--", linewidth=0.8)
+    ax.set_xlim(-0.03, 1.03)
+    ax.set_ylim(-0.03, 1.03)
+    ax.set_xlabel(" Off-target θ (higher = more likely to misfire)")
+    ax.set_ylabel("On-target θ (higher = more likely to detect your target)")
+    ax.set_title("Assay Performance Landscape")
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    fig.tight_layout()
+ 
+    output_path = output_dir / "assay_performance_landscape.png"
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+ 
+
+# ── Classification summary ───────────────────────────────────────────────────────
+ 
+def _check(passed) -> str:
+    if passed is None:
+        return "n/a"
+    return "✅" if passed else "❌"
+ 
+ 
+def _window_is_stable(window: str, max_mismatches: int) -> bool | None:
+    if not window or window == "n/a":
+        return None
+    return window.count("-") <= max_mismatches
+ 
+ 
+def _classification_rows(
+    details: list,
+    theta_threshold: float,
+    max_amplicon_size: int,
+    max_3prime_mismatches: int,
+    tier_label: str,
+) -> list:
+    rows = []
+    for row in details:
+        fwd_theta = row.get("fwd_theta")
+        rev_theta = row.get("rev_theta")
+        stable = (
+            fwd_theta is not None and rev_theta is not None
+            and fwd_theta >= theta_threshold and rev_theta >= theta_threshold
+        )
+        # Support both old field names and new ones
+        fwd_3p = row.get("fwd_3prime_window") or row.get("fwd_3prime")
+        rev_3p = row.get("rev_3prime_window") or row.get("rev_3prime")
+        fwd_ext = _window_is_stable(fwd_3p, max_3prime_mismatches)
+        rev_ext = _window_is_stable(rev_3p, max_3prime_mismatches)
+        extension = None if (fwd_ext is None or rev_ext is None) else (fwd_ext and rev_ext)
+        # presence in this table already implies convergent geometry was found
+        convergent = True
+        product_ok = row.get("amplicon_size_bp") is not None and row["amplicon_size_bp"] <= max_amplicon_size
+ 
+        rows.append({
+            "assay": row.get("assay_name", "?"),
+            "accession": row.get("background_accession") or row.get("_accession_label") or row.get("accession", "?"),
+            "stable": stable,
+            "extension": extension,
+            "convergent": convergent,
+            "product_ok": product_ok,
+            "tier": tier_label,
+        })
+    return rows
+ 
+ 
+def write_classification_summary(md, tier_1_details, tier_2_details, theta_threshold,
+                            max_amplicon_size, max_3prime_mismatches):
+ 
+    rows = (
+        _classification_rows(tier_1_details, theta_threshold, max_amplicon_size, max_3prime_mismatches, "Tier 1")
+        + _classification_rows(tier_2_details, theta_threshold, max_amplicon_size, max_3prime_mismatches, "Tier 2")
+    )
+ 
+    if not rows:
+        md.write("No cross-amplification hits to ladder — nothing cleared even the first gate.\n\n")
+        return
+ 
+    md.write("| Assay | Accession | Stable binding (θ ≥ threshold) | 3′ extension competent | Convergent geometry | Product ≤ max size | Tier |\n")
+    md.write("| :--- | :--- | :---: | :---: | :---: | :---: | :---: |\n")
+    for r in rows:
+        md.write(
+            f"| `{r['assay']}` | `{r['accession']}` "
+            f"| {_check(r['stable'])} | {_check(r['extension'])} "
+            f"| {_check(r['convergent'])} | {_check(r['product_ok'])} "
+            f"| {r['tier']} |\n"
+        )
+    md.write("\n")
+    md.write(
+        "*A hit needs all four checks to pass before it's a genuine misamplification risk. "
+        "\"3′ extension competent\" shows as n/a if 3′-window data wasn't recorded for that hit.*\n\n"
+    )

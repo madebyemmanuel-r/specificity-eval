@@ -3,7 +3,7 @@ import pandas as pd
 from pathlib import Path
 import tempfile, csv
 
-from oligo_handling import parse_and_validate_oligos, _infer_assay_name
+from oligo_handling import parse_and_validate_oligos, _infer_assay_name, parse_oligos, Oligo
 
 
 # ---------------------------------------------------------------------------
@@ -132,3 +132,13 @@ class TestParseAndValidateOligos:
         ], csv_path)
         result = parse_and_validate_oligos(str(csv_path))
         assert isinstance(result, pd.DataFrame)
+
+    def test_parse_oligos_returns_dataclass_list(self, tmp_path):
+        """The new typed parser should return a list of Oligo dataclasses."""
+        csv_path = tmp_path / "oligos.csv"
+        _write_csv([
+            {"OligoID": "UL27_F", "Sequence": "ATCGATCGATCG", "PrimerPair": "UL27", "Orientation": "Forward"},
+        ], csv_path)
+        parsed = parse_oligos(str(csv_path))
+        assert isinstance(parsed, list)
+        assert isinstance(parsed[0], Oligo)

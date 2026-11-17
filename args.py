@@ -76,4 +76,78 @@ def parse_args():
         help="Optional NCBI API key to increase the gene lookup rate limit from 5 to 10 requests per second."
     )
 
+    # 6. Thermodynamics & specificity tuning
+    parser.add_argument(
+        "--operating-temp-c",
+        type=float,
+        default=37.0,
+        help="Operating temperature (°C) used for thermodynamic calculations."
+    )
+
+    parser.add_argument(
+        "--theta-threshold",
+        type=float,
+        default=0.05,
+        help="Fractional occupancy (theta) cutoff used to flag elevated sequestration/amplification risk."
+    )
+
+    parser.add_argument(
+        "--max-3prime-mismatches",
+        type=int,
+        default=3,
+        help="Maximum allowed mismatches in the primer 3' window for extension competency checks."
+    )
+
+    parser.add_argument(
+        "--three-prime-window",
+        type=int,
+        default=5,
+        help="Length (bp) of the primer 3' window used when counting mismatches (n_bases)."
+    )
+
+    # 7. Reaction condition overrides (maps to AssayConditions)
+    parser.add_argument(
+        "--monovalent-salt-mM",
+        type=float,
+        default=100.0,
+        help="Monovalent salt concentration in mM (used for Tm/thermo calculations)."
+    )
+
+    parser.add_argument(
+        "--divalent-salt-mM",
+        type=float,
+        default=14.0,
+        help="Divalent cation (Mg2+) concentration in mM (used for Tm/thermo calculations)."
+    )
+
+    parser.add_argument(
+        "--dntp-mM",
+        type=float,
+        default=1.8,
+        help="dNTP concentration in mM (used for Tm/thermo calculations)."
+    )
+
+    parser.add_argument(
+        "--oligo-conc-uM",
+        type=float,
+        default=0.5,
+        help="Oligonucleotide (primer) concentration in μM used for occupancy calculations."
+    )
+
+    parser.add_argument(
+        "--template-conc-uM",
+        type=float,
+        default=1e-6,
+        help="Template concentration in μM used for occupancy calculations."
+    )
+
+    # 8. Plot control
+    parser.add_argument(
+        "--no-plot",
+        dest="write_plot",
+        action="store_false",
+        default=True,
+        help="Disable generation of graphical plots (turn off writing plots)."
+    )
+
     return parser.parse_args()

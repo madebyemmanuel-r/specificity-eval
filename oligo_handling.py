@@ -1,13 +1,33 @@
 import csv
 import logging
 from pathlib import Path
+from dataclasses import dataclass
+from typing import List
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-def parse_and_validate_oligos(csv_path: str) -> list:
+
+@dataclass
+class Oligo:
+    """Structured representation of a single oligo/primer row from the input CSV.
+
+    Fields match the canonical columns used by the pipeline. Use this class
+    for typed internal processing; the existing ``parse_and_validate_oligos``
+    function remains for backward compatibility and returns a DataFrame.
     """
-    Parses input CSV containing primer pairs with flexible header matching.
+    OligoID: str
+    Sequence: str
+    PrimerPair: str
+    Orientation: str  # Forward or Reverse
+    AssayName: str
+
+
+def parse_oligos(csv_path: str) -> List[Oligo]:
+    """Parse and validate an oligo CSV, returning a list of ``Oligo`` instances.
+
+    This function performs the same flexible header matching and QC as the
+    original parser but returns typed objects for downstream use.
     """
     path = Path(csv_path)
     if not path.exists():
@@ -23,7 +43,7 @@ def parse_and_validate_oligos(csv_path: str) -> list:
     }
 
     valid_orientations = {"Forward", "Reverse"}
-    parsed_oligos = []
+    parsed_oligos: List[Oligo] = []
 
     with open(path, mode="r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
@@ -78,16 +98,27 @@ def parse_and_validate_oligos(csv_path: str) -> list:
             else:
                 assay_name = _infer_assay_name(oligo_id, primer_pair)
 
-            parsed_oligos.append({
-                "OligoID":    oligo_id,
-                "Sequence":   sequence,
-                "PrimerPair": primer_pair,
-                "Orientation": oligo_type,
-                "AssayName":  assay_name,
-            })
+            parsed_oligos.append(Oligo(
+                OligoID=oligo_id,
+                Sequence=sequence,
+                PrimerPair=primer_pair,
+                Orientation=oligo_type,
+                AssayName=assay_name,
+            ))
 
-    logging.info(f"QC: Loaded and verified {len(parsed_oligos)} oligos using automated header matching.")
-    return pd.DataFrame(parsed_oligos)
+    logger.info(f"QC: Loaded and verified {len(parsed_oligos)} oligos using automated header matching.")
+    return parsed_oligos
+
+
+def parse_and_validate_oligos(csv_path: str) -> pd.DataFrame:
+    """Backward-compatible wrapper that returns a DataFrame.
+
+    Internally uses :func:`parse_oligos` to obtain typed objects and then
+    converts them to a pandas DataFrame for existing callers and tests.
+    """
+    parsed = parse_oligos(csv_path)
+    rows = [o.__dict__ for o in parsed]
+    return pd.DataFrame(rows)
 
 
 def _infer_assay_name(oligo_id: str, primer_pair: str) -> str:
